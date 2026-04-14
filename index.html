@@ -402,8 +402,15 @@ const stateSymbols = ["–","P","R","✓"];
 const stateClasses = ["sym-0","sym-1","sym-2","sym-3"];
 
 // ── CALENDAR DATA ──
+// Default schedule from CSV (only applied if localStorage is empty)
+const DEFAULT_SCHEDULE = { "0_4": 1, "1_5": 1, "2_7": 1, "3_1": 1, "4_6": 1, "5_3": 1, "6_11": 1, "7_9": 1, "8_10": 1, "9_7": 1, "10_5": 1, "11_2": 1, "12_2": 1 };
+
 let calData = {};
-try { calData = JSON.parse(localStorage.getItem('maniagro_audit_2026') || '{}'); } catch(e) {}
+try {
+  const stored = localStorage.getItem('maniagro_audit_2026');
+  calData = stored ? JSON.parse(stored) : Object.assign({}, DEFAULT_SCHEDULE);
+  if (!stored) localStorage.setItem('maniagro_audit_2026', JSON.stringify(calData));
+} catch(e) { calData = Object.assign({}, DEFAULT_SCHEDULE); }
 
 const getKey   = (r, c) => r + '_' + c;
 const getState = (r, c) => calData[getKey(r, c)] || 0;
