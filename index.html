@@ -243,6 +243,51 @@
     header { position:relative; }
     .kpi-row { grid-template-columns:repeat(4,1fr); }
   }
+
+  /* STATE SELECTOR DROPDOWN */
+  .chip { cursor:pointer; transition: transform .15s, box-shadow .15s; }
+  .chip:hover { transform:scale(1.08); box-shadow:0 2px 8px rgba(0,0,0,0.18); }
+
+  .state-menu {
+    position:fixed; z-index:1000;
+    background:#fff; border-radius:10px;
+    box-shadow:0 8px 32px rgba(15,30,54,0.22);
+    border:1px solid var(--border);
+    padding:6px; min-width:160px;
+    display:none; flex-direction:column; gap:4px;
+  }
+  .state-menu.open { display:flex; }
+  .state-menu-title {
+    font-size:10px; letter-spacing:1px; text-transform:uppercase;
+    color:var(--text-muted); font-weight:700; padding:4px 8px 6px;
+    border-bottom:1px solid var(--border); margin-bottom:2px;
+  }
+  .state-opt {
+    display:flex; align-items:center; gap:8px;
+    padding:7px 10px; border-radius:7px; cursor:pointer;
+    font-size:12px; font-weight:700; transition:background .12s;
+  }
+  .state-opt:hover { background:var(--bg); }
+  .state-opt .opt-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .state-opt.opt-P  { color:#6b3a00; }
+  .state-opt.opt-R  { color:#5a4700; }
+  .state-opt.opt-D  { color:#0c3d22; }
+  .state-opt.opt-X  { color:var(--text-muted); }
+  .state-overlay { position:fixed; inset:0; z-index:999; display:none; }
+  .state-overlay.open { display:block; }
+
+  /* edited chip indicator */
+  .chip.edited::after { display:none !important; }
+  .chip .edit-icon { font-size:9px; opacity:0.55; margin-left:2px; }
+
+  .btn-reset {
+    background:rgba(255,255,255,0.15); border:1.5px solid rgba(255,255,255,0.4);
+    color:#fff; font-family:'Montserrat',sans-serif; font-size:11px;
+    font-weight:700; letter-spacing:0.8px; text-transform:uppercase;
+    padding:7px 16px; border-radius:20px; cursor:pointer;
+    transition:background .2s; white-space:nowrap; margin-top:6px;
+  }
+  .btn-reset:hover { background:rgba(255,255,255,0.28); }
 </style>
 </head>
 <body>
@@ -258,7 +303,8 @@
   <div class="header-meta">
     <strong>AÑO 2026</strong><br>
     Actualización: 05/02/2026<br>
-    Página 1 de 1
+    Página 1 de 1<br>
+    <button class="btn-reset" onclick="resetChanges()">↺ Restaurar CSV</button>
   </div>
 </header>
 
@@ -324,15 +370,6 @@ const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','A
 
 // ════════════════════════════════════════════════════
 //  DATA — extraída del CSV (R-SIG-AI 01)
-//  Referencias CSV fila 58:
-//    col 3 = Programada  (amarillo #d4920a)
-//    col 6 = Reprogramada(naranja  #c45b08)
-//    col 9 = Realizada   (verde    #27815a)
-//
-//  Auditorías con fecha ya transcurrida (< 15/04/2026):
-//    → FEB 01: Maní frito  (era Reprogramada) → ahora Realizada 'D'
-//    → MAR 31: Ingeniería                      → ahora Realizada 'D'
-//    → MAR 21: Dirección                       → ahora Realizada 'D'
 // ════════════════════════════════════════════════════
 const auditorias = [
   {
@@ -399,30 +436,59 @@ const auditorias = [
   }
 ];
 
+// ─── ESTADO EDITABLE (copia editable separada del original) ───
+// Cargamos desde localStorage si hay cambios guardados
+function loadState() {
+  try {
+    const saved = localStorage.getItem('auditoriasState_2026');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Merge: mantener estructura, reemplazar months
+      parsed.forEach((g, gi) => {
+        g.rows.forEach((r, ri) => {
+          if (auditorias[gi] && auditorias[gi].rows[ri]) {
+            auditorias[gi].rows[ri].months = r.months;
+          }
+        });
+      });
+    }
+  } catch(e) {}
+}
+
+function saveState() {
+  const toSave = auditorias.map(g => ({
+    rows: g.rows.map(r => ({ months: [...r.months] }))
+  }));
+  localStorage.setItem('auditoriasState_2026', JSON.stringify(toSave));
+}
+
 // ─── CHIP HTML ────────────────────────────────────────────────
-function chipHtml(status, date, mIdx) {
-  if (!status) return '<span style="color:#bcc9db;font-size:15px;line-height:1;">—</span>';
-  const tooltip = date ? `Fecha programada: ${date} de ${MONTH_NAMES[mIdx]} de 2026` : '';
-  const tt = tooltip ? ` data-tooltip="${tooltip}"` : '';
+function chipHtml(status, date, mIdx, gIdx, rIdx) {
+  const dataAttrs = `data-g="${gIdx}" data-r="${rIdx}" data-m="${mIdx}"`;
+  if (!status) return `<span class="chip-empty" ${dataAttrs} style="color:#bcc9db;font-size:15px;line-height:1;cursor:pointer;padding:4px 8px;border-radius:6px;display:inline-block;" title="Click para asignar estado">—</span>`;
+  const tooltip = date ? `data-tooltip="Fecha: ${date} de ${MONTH_NAMES[mIdx]} 2026"` : '';
   if (status==='D')
-    return `<div class="chip chip-done"${tt}><div class="chip-dot"></div>✓ ${date}</div>`;
+    return `<div class="chip chip-done" ${dataAttrs} ${tooltip}><div class="chip-dot"></div>✓ ${date}</div>`;
   if (status==='R')
-    return `<div class="chip chip-R"${tt}><div class="chip-dot"></div>R ${date}</div>`;
-  return `<div class="chip chip-P"${tt}><div class="chip-dot"></div>P ${date}</div>`;
+    return `<div class="chip chip-R" ${dataAttrs} ${tooltip}><div class="chip-dot"></div>R ${date}</div>`;
+  return `<div class="chip chip-P" ${dataAttrs} ${tooltip}><div class="chip-dot"></div>P ${date}</div>`;
 }
 
 // ─── RENDER TABLE ─────────────────────────────────────────────
 function renderTable() {
   let html='';
-  auditorias.forEach(g => {
+  auditorias.forEach((g, gi) => {
     html += `<tr class="group-row"><td colspan="14">${g.group}</td></tr>`;
-    g.rows.forEach(r => {
+    g.rows.forEach((r, ri) => {
       html += `<tr><td>${r.area}</td><td>${r.resp}</td>`;
-      r.months.forEach((st,i) => { html += `<td class="month-cell">${chipHtml(st,r.dates[i],i)}</td>`; });
+      r.months.forEach((st, i) => {
+        html += `<td class="month-cell">${chipHtml(st, r.dates[i], i, gi, ri)}</td>`;
+      });
       html += `</tr>`;
     });
   });
   document.getElementById('tableBody').innerHTML = html;
+  attachChipListeners();
 }
 
 // ─── KPIs ──────────────────────────────────────────────────────
@@ -455,13 +521,94 @@ function renderKPIs() {
     </div>`;
 
   const pct = total>0 ? Math.round(real/total*100) : 0;
-  setTimeout(()=>{
-    document.getElementById('progressBar').style.width = pct+'%';
-    document.getElementById('progressBarLabel').textContent = pct>14 ? pct+'%' : '';
-    document.getElementById('progressPct').textContent = pct+'%';
-  }, 250);
+  document.getElementById('progressBar').style.width = pct+'%';
+  document.getElementById('progressBarLabel').textContent = pct>14 ? pct+'%' : '';
+  document.getElementById('progressPct').textContent = pct+'%';
 }
 
+// ─── STATE MENU ───────────────────────────────────────────────
+const menu = document.createElement('div');
+menu.className = 'state-menu';
+menu.innerHTML = `
+  <div class="state-menu-title">Cambiar estado</div>
+  <div class="state-opt opt-P" data-val="P">
+    <span class="opt-dot" style="background:var(--programada)"></span>Programada
+  </div>
+  <div class="state-opt opt-R" data-val="R">
+    <span class="opt-dot" style="background:var(--reprogramada)"></span>Reprogramada
+  </div>
+  <div class="state-opt opt-D" data-val="D">
+    <span class="opt-dot" style="background:var(--realizada)"></span>Realizada
+  </div>
+  <div class="state-opt opt-X" data-val="">
+    <span class="opt-dot" style="background:#bcc9db"></span>Sin estado
+  </div>`;
+document.body.appendChild(menu);
+
+const overlay = document.createElement('div');
+overlay.className = 'state-overlay';
+document.body.appendChild(overlay);
+
+let activeChip = null;
+
+function openMenu(chip, e) {
+  e.stopPropagation();
+  activeChip = chip;
+  const rect = chip.getBoundingClientRect();
+  const menuH = 180;
+  let top = rect.bottom + 6;
+  if (top + menuH > window.innerHeight) top = rect.top - menuH - 6;
+  let left = rect.left;
+  if (left + 165 > window.innerWidth) left = window.innerWidth - 170;
+  menu.style.top  = top + 'px';
+  menu.style.left = left + 'px';
+  menu.classList.add('open');
+  overlay.classList.add('open');
+}
+
+function closeMenu() {
+  menu.classList.remove('open');
+  overlay.classList.remove('open');
+  activeChip = null;
+}
+
+overlay.addEventListener('click', closeMenu);
+
+menu.querySelectorAll('.state-opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    if (!activeChip) return;
+    const gi = +activeChip.dataset.g;
+    const ri = +activeChip.dataset.r;
+    const mi = +activeChip.dataset.m;
+    const newVal = opt.dataset.val;
+    auditorias[gi].rows[ri].months[mi] = newVal;
+    saveState();
+    // Re-render solo la celda
+    const cell = activeChip.closest('td');
+    const date = auditorias[gi].rows[ri].dates[mi];
+    cell.innerHTML = chipHtml(newVal, date, mi, gi, ri);
+    attachChipListeners();
+    renderKPIs();
+    closeMenu();
+  });
+});
+
+function attachChipListeners() {
+  document.querySelectorAll('.chip[data-g], .chip-empty[data-g]').forEach(chip => {
+    chip.addEventListener('click', (e) => openMenu(chip, e));
+  });
+}
+
+// ─── RESET BUTTON ─────────────────────────────────────────────
+function resetChanges() {
+  if (confirm('¿Restaurar todos los estados al valor original del CSV?')) {
+    localStorage.removeItem('auditoriasState_2026');
+    location.reload();
+  }
+}
+
+// ─── INIT ─────────────────────────────────────────────────────
+loadState();
 renderTable();
 renderKPIs();
 </script>
